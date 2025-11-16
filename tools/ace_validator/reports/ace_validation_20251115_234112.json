@@ -1,0 +1,68 @@
+{
+  "timestamp": "20251115_234112",
+  "project": {
+    "files": 31,
+    "lines": 7,
+    "modules": [
+      "ace"
+    ]
+  },
+  "analysis": {
+    "summary": "O pipeline de extra\u00e7\u00e3o apresenta uma arquitetura bem estruturada com separa\u00e7\u00e3o clara de responsabilidades, mas possui vulnerabilidades cr\u00edticas de tratamento de erros, depend\u00eancias de caminhos hardcoded e limita\u00e7\u00f5es de escalabilidade. A l\u00f3gica de parsing ACORD 25 \u00e9 robusta com m\u00faltiplos aliases, por\u00e9m carece de valida\u00e7\u00e3o mais rigorosa.",
+    "score": 65,
+    "findings": [
+      {
+        "area": "Configura\u00e7\u00e3o e Depend\u00eancias",
+        "severity": "high",
+        "description": "Caminhos hardcoded para Tesseract e Poppler (TESSERACT_CMD, POPPLER_PATH) tornam o c\u00f3digo n\u00e3o-port\u00e1vel e propenso a falhas em diferentes ambientes",
+        "file": "ace/extraction/ocr.py"
+      },
+      {
+        "area": "Tratamento de Erros",
+        "severity": "high",
+        "description": "Pipeline falha silenciosamente em v\u00e1rios pontos cr\u00edticos sem logging adequado. Exception handling gen\u00e9rico pode mascarar problemas espec\u00edficos",
+        "file": "ace/extraction/runner.py"
+      },
+      {
+        "area": "Gerenciamento de Conex\u00f5es",
+        "severity": "high",
+        "description": "M\u00faltiplas conex\u00f5es SQLite abertas e fechadas ao longo do pipeline, com risco de vazamento de recursos e inconsist\u00eancias de transa\u00e7\u00e3o",
+        "file": "ace/extraction/runner.py"
+      },
+      {
+        "area": "Performance e Escalabilidade",
+        "severity": "medium",
+        "description": "OCR obrigat\u00f3rio por padr\u00e3o pode ser custoso computacionalmente. Falta paraleliza\u00e7\u00e3o para processamento em lote",
+        "file": "ace/extraction/runner.py"
+      },
+      {
+        "area": "Valida\u00e7\u00e3o de Dados",
+        "severity": "medium",
+        "description": "Parser aceita valores extra\u00eddos sem valida\u00e7\u00e3o de ranges realistas (ex: limites GL muito baixos ou altos)",
+        "file": "ace/extraction/parser_acord25.py"
+      },
+      {
+        "area": "Logging e Observabilidade",
+        "severity": "medium",
+        "description": "Sistema de logging rudimentar com apenas prints, dificultando debugging e monitoramento em produ\u00e7\u00e3o",
+        "file": "ace/extraction/runner.py"
+      },
+      {
+        "area": "Robustez do Parser",
+        "severity": "low",
+        "description": "Boa cobertura de aliases para campos GL, mas heur\u00edsticas de extra\u00e7\u00e3o de policy_number podem gerar falsos positivos",
+        "file": "ace/extraction/parser_acord25.py"
+      }
+    ],
+    "recommendations": [
+      "Implementar sistema de configura\u00e7\u00e3o (config.yaml/env vars) para caminhos de ferramentas externas",
+      "Adicionar logging estruturado (logging module) com n\u00edveis apropriados e contexto detalhado",
+      "Implementar context managers para conex\u00f5es SQLite e transa\u00e7\u00f5es at\u00f4micas",
+      "Adicionar valida\u00e7\u00e3o de business rules para valores extra\u00eddos (ranges de limites, formatos de datas)",
+      "Implementar cache/throttling para OCR e considerar processamento ass\u00edncrono",
+      "Adicionar m\u00e9tricas de qualidade mais granulares baseadas na confiabilidade dos dados extra\u00eddos",
+      "Implementar retry logic com backoff exponencial para opera\u00e7\u00f5es que podem falhar temporariamente",
+      "Criar testes unit\u00e1rios para cen\u00e1rios de falha e edge cases do parser"
+    ]
+  }
+}

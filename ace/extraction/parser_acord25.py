@@ -1,123 +1,107 @@
-﻿import re
+﻿"""
+Parser ACORD 25 – foco em linha de Commercial General Liability (GL).
+
+Responsável por:
+- localizar a linha GL no formulário;
+- extrair número da apólice, datas de vigência;
+- extrair limites principais de GL:
+  - EACH OCCURRENCE
+  - GENERAL AGGREGATE
+  - PERSONAL & ADV INJURY
+  - PRODUCTS/COMP/OP AGG
+  - DAMAGE TO PREMISES (EA OCC)
+  - MED EXP (ANY ONE PERSON)
+
+Retorna um ExtractedCOI com uma policy GL e coverages associadas.
+"""
+
+from __future__ import annotations
+
+import re
 from typing import List, Optional
 
 from .layout import PageText
-from .models import (
-    ExtractedCOI,
-    ExtractedPolicy,
-    ExtractedCoverage,
-)
+from .models import ExtractedCOI, ExtractedPolicy, ExtractedCoverage
 
 
-def _parse_limit(label: str, text: str) -> Optional[float]:
-    """
-    Procura um valor numérico logo depois do label.
-    Ex.: "EACH OCCURRENCE $1,000,000" -> 1000000.0
-    O label é tratado como um literal (não regex) e é case-insensitive.
-    """
-    escaped = re.escape(label)
-    pattern = rf"{escaped}\s+([\$]?\s*[\d,]+(?:\.\d{{2}})?)"
-    m = re.search(pattern, text, flags=re.IGNORECASE)
-    if not m:
-        return None
-
-    raw = m.group(1)
-    digits = re.sub(r"[^\d.]", "", raw)
-    if not digits:
-        return None
-
-    try:
-        return float(digits)
-    except ValueError:
-        return None
+# ---------- Utilitários de texto ----------
 
 
-def _parse_limit_multi(labels: List[str], text: str) -> Optional[float]:
-    """
-    Tenta vários rótulos equivalentes (aliases) até achar um valor.
-    """
-    for label in labels:
-        value = _parse_limit(label, text)
-        if value is not None:
-            return value
-    return None
-
-
-def _normalize_date(s: str) -> str:
-    """
-    Remove espaços em volta de "/" em algo tipo '10 / 01 / 2024' -> '10/01/2024'.
-    """
-    return re.sub(r"\s*/\s*", "/", s.strip())
-
-
-def _parse_mmddyyyy_to_iso(s: str) -> Optional[str]:
-    """
-    Converte '5/7/2024' ou '05/07/2024' em '2024-05-07'.
-    Aceita 1 ou 2 dígitos para mês e dia.
-    """
-    s = _normalize_date(s)
-    m = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
-    if not m:
-        return None
-    month, day, year = m.groups()
-    month = month.zfill(2)
-    day = day.zfill(2)
-    return f"{year}-{month}-{day}"
+def _full_text(pages: List[PageText]) -> str:
+    return "\n".join((p.text or "") for p in pages)
 
 
 def _find_gl_row_text(pages: List[PageText]) -> str:
     """
-    Procura a "linha" GL em janelas de até 4 linhas.
-    Critério: janela contem COMMERCIAL + GENERAL + algo começando com LIAB.
-    Se não achar, devolve texto completo como fallback.
+    Tenta encontrar um bloco de texto que represente a linha GL do ACORD.
+
+    Procuramos por janelas de ~4 linhas contendo "GENERAL" e "LIAB" ou
+    "COMMERCIAL GENERAL LIABILITY". Se não acharmos, voltamos o texto completo.
     """
-    for p in pages:
-        n = len(p.lines)
-        for i in range(n):
-            window_lines = p.lines[i : i + 4]
-            window_text = " ".join(window_lines)
-            up = window_text.upper()
-            if (
-                "COMMERCIAL" in up
-                and "GENERAL" in up
-                and "LIAB" in up  # pega LIABILITY, LIABI LITY etc.
-            ):
-                return window_text
+    for page in pages:
+        lines = page.lines or (page.text or "").splitlines()
+        if not lines:
+            continue
 
-    # fallback bem amplo
-    return "\n".join(p.text for p in pages)
+        for i in range(0, max(0, len(lines) - 4)):
+            window_lines = lines[i : i + 5]
+            window = " ".join(window_lines)
+            upper = window.upper()
+            if ("GENERAL" in upper and "LIAB" in upper) or "COMMERCIAL GENERAL LIABILITY" in upper:
+                return "\n".join(window_lines)
+
+    # Fallback: texto completo
+    return _full_text(pages)
 
 
-def _parse_gl_policy_metadata(pages: List[PageText]):
+def _parse_mmddyyyy_to_iso(s: str) -> Optional[str]:
     """
-    Heurísticas para extrair:
-      - policy_number
-      - effective_date
-      - expiration_date
-    usando a linha GL (janela de 4 linhas).
+    Converte datas no formato mm/dd/yyyy ou m/d/yyyy para ISO (yyyy-mm-dd).
+    """
+    m = re.search(r"(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})", s)
+    if not m:
+        return None
+    month = int(m.group(1))
+    day = int(m.group(2))
+    year = int(m.group(3))
+    if not (1 <= month <= 12 and 1 <= day <= 31 and 1900 <= year <= 2100):
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _normalize_date_token(s: str) -> str:
+    """
+    Remove tudo exceto dígitos para comparação de tokens de data.
+    Ex: "06/01/2023" -> "06012023"
+    """
+    return re.sub(r"[^0-9]", "", s or "")
+
+
+def _parse_gl_policy_metadata(
+    certificate_id: int, pages: List[PageText]
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Extrai número de apólice e datas de vigência a partir da linha GL.
     """
     row = _find_gl_row_text(pages)
 
-    # Datas no formato MM/DD/YYYY com 1 ou 2 dígitos em mês/dia, com ou sem espaços
-    date_pattern = r"\b(\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4})\b"
+    # Extrai datas
+    date_pattern = r"\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4}"
     date_strings = re.findall(date_pattern, row)
-
     eff_iso = _parse_mmddyyyy_to_iso(date_strings[0]) if len(date_strings) >= 1 else None
     exp_iso = _parse_mmddyyyy_to_iso(date_strings[1]) if len(date_strings) >= 2 else None
 
-    # Tokens alfanuméricos (inclui - e /)
-    tokens = re.findall(r"[A-Z0-9\-\/]+", row)
-    # normaliza as datas para comparar com tokens
-    normalized_dates = {_normalize_date(d) for d in date_strings}
+    # Tenta encontrar número de apólice como token anterior à primeira data
+    tokens = re.findall(r"[A-Z0-9\-\/]+", row.upper())
+    normalized_dates = {_normalize_date_token(d) for d in date_strings}
 
-    policy_number = None
-
-    # Procura o token imediatamente antes da primeira data
+    policy_number: Optional[str] = None
     for idx, tok in enumerate(tokens):
-        if _normalize_date(tok) in normalized_dates:
+        if _normalize_date_token(tok) in normalized_dates:
+            # token anterior pode ser policy_number
             if idx > 0:
                 candidate = tokens[idx - 1]
-                # heurística simples: tem dígito e pelo menos 6 chars
+                # heurística: ter dígito e pelo menos 6 caracteres
                 if any(ch.isdigit() for ch in candidate) and len(candidate) >= 6:
                     policy_number = candidate
             break
@@ -125,36 +109,100 @@ def _parse_gl_policy_metadata(pages: List[PageText]):
     return policy_number, eff_iso, exp_iso
 
 
+# ---------- Parsing de limites ----------
+
+
+def _parse_number(num_str: str) -> Optional[float]:
+    if not num_str:
+        return None
+    # remove símbolos ($, , , espaços)
+    cleaned = re.sub(r"[^\d.]", "", num_str)
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _parse_limit(label: str, text: str) -> Optional[float]:
+    """
+    Procura por LABEL seguido de um valor monetário.
+
+    Estratégia em 2 passos:
+    1) Tenta capturar valor logo após o label (mesma linha).
+    2) Se falhar, permite quebra de linha e usa uma janela pequena após o label.
+    """
+    escaped = re.escape(label)
+
+    # 1) mesma linha / logo após
+    pattern_same = rf"{escaped}[\s:]+([\$]?\s*[\d,]+(?:\.\d{{2}})?)"
+    m = re.search(pattern_same, text, flags=re.IGNORECASE)
+    if m:
+        return _parse_number(m.group(1))
+
+    # 2) tolerante a quebra de linha – até ~80 caracteres após o label
+    pattern_window = rf"{escaped}(.{{0,80}}?)([\$]?\s*[\d,]+(?:\.\d{{2}})?)"
+    m = re.search(pattern_window, text, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        return _parse_number(m.group(2))
+
+    return None
+
+
+def _parse_limit_multi(labels: List[str], text: str) -> Optional[float]:
+    for label in labels:
+        value = _parse_limit(label, text)
+        if value is not None:
+            return value
+    return None
+
+
+def _sanitize_limit(value: Optional[float]) -> Optional[float]:
+    """
+    Normaliza limites extraídos:
+    - None permanece None
+    - valores <= 0 são descartados (tratados como não encontrados)
+    """
+    if value is None:
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
+# ---------- Parser principal de GL ----------
+
+
 def parse_acord25_gl_limits(
     certificate_id: int,
     pages: List[PageText],
 ) -> Optional[ExtractedCOI]:
     """
-    Parser ACORD 25 focado em GL (MVP melhorado):
-    - Junta texto de todas as páginas
-    - Procura rótulos GL com aliases (inclui casos como 'EACHOCCURRENCE')
-    - Extrai limites principais de GL:
-        * EACH OCCURRENCE
-        * GENERAL AGGREGATE
-        * PERSONAL & ADV INJURY
-        * PRODUCTS / COMPLETED OPERATIONS AGG
-        * DAMAGE TO RENTED PREMISES
-        * MED EXPENSE
-    - Tenta extrair também policy_number + datas EFF/EXP da linha GL.
-    """
-    full_text = "\n".join(p.text for p in pages)
+    Parser de GL para ACORD 25.
 
-    # Aliases para EACH OCCURRENCE
+    Retorna ExtractedCOI com uma policy GL e coverages associadas,
+    ou None se não encontrar limites mínimos de GL.
+    """
+    full_text = _full_text(pages)
+    if not full_text.strip():
+        return None
+
+    # 1) Dados de policy (número, datas)
+    policy_number, eff_date, exp_date = _parse_gl_policy_metadata(
+        certificate_id, pages
+    )
+
+    # 2) Definição de labels/aliases
     each_labels = [
         "EACH OCCURRENCE",
-        "EACHOCCURRENCE",   # caso do ACORD com palavras coladas
+        "EACHOCCURRENCE",
         "EACH OCCUR.",
         "EACH OCCUR",
         "EACH OCC.",
         "EACH OCC",
     ]
 
-    # Aliases para GENERAL AGGREGATE
     agg_labels = [
         "GENERAL AGGREGATE",
         "GEN'L AGGREGATE",
@@ -163,7 +211,6 @@ def parse_acord25_gl_limits(
         "GENL AGG.",
     ]
 
-    # Personal & Advertising Injury
     pers_adv_labels = [
         "PERSONAL & ADV INJURY",
         "PERSONAL AND ADV INJURY",
@@ -173,7 +220,6 @@ def parse_acord25_gl_limits(
         "PERS/ADV INJ",
     ]
 
-    # Products / Completed Operations Aggregate
     prod_agg_labels = [
         "PRODUCTS - COMP/OP AGG",
         "PRODUCTS-COMP/OP AGG",
@@ -183,15 +229,15 @@ def parse_acord25_gl_limits(
         "PRODUCTS/COMPLETED OPS AGG",
     ]
 
-    # Damage to rented premises
     damage_prem_labels = [
         "DAMAGE TO PREMISES (EA OCCURRENCE)",
         "DAMAGE TO PREMISES (EA OCC)",
         "DAMAGE TO RENTED PREMISES",
         "DAMAGE TO RENTED PREM",
+        "PREMISES (EA OCCURRENCE)",
+        "PREMISES (EA OCC)",
     ]
 
-    # Medical expenses
     med_exp_labels = [
         "MED EXP (ANY ONE PERSON)",
         "MED EXP (ANY ONE PERS)",
@@ -199,21 +245,33 @@ def parse_acord25_gl_limits(
         "MEDICAL EXP (ANY ONE PERSON)",
     ]
 
-    each_occ = _parse_limit_multi(each_labels, full_text)
-    gen_agg = _parse_limit_multi(agg_labels, full_text)
-    pers_adv = _parse_limit_multi(pers_adv_labels, full_text)
-    prod_agg = _parse_limit_multi(prod_agg_labels, full_text)
-    damage_prem = _parse_limit_multi(damage_prem_labels, full_text)
-    med_exp = _parse_limit_multi(med_exp_labels, full_text)
+    # 3) Extração de limites numéricos
+    each_occ = _sanitize_limit(_parse_limit_multi(each_labels, full_text))
+    gen_agg = _sanitize_limit(_parse_limit_multi(agg_labels, full_text))
+    pers_adv = _sanitize_limit(_parse_limit_multi(pers_adv_labels, full_text))
+    prod_agg = _sanitize_limit(_parse_limit_multi(prod_agg_labels, full_text))
+    damage_prem = _sanitize_limit(_parse_limit_multi(damage_prem_labels, full_text))
+    med_exp = _sanitize_limit(_parse_limit_multi(med_exp_labels, full_text))
 
-    # Se não achamos nenhum dos dois principais, consideramos falha de parser
+    # Se não conseguimos nenhum dos dois principais, abortamos
     if each_occ is None and gen_agg is None:
         return None
 
-    # Metadados da policy GL (número e datas)
-    policy_number, eff_date, exp_date = _parse_gl_policy_metadata(pages)
+    # 4) Qualidade / consistência
+    quality = 1.0
 
-    # Políticas e coberturas
+    if each_occ is None or gen_agg is None:
+        quality = 0.7
+    else:
+        # Regra simples: EACH OCCURRENCE não deve ser maior que AGGREGATE
+        if each_occ > gen_agg:
+            print(
+                f"[parser_acord25] Aviso: GL_EACH_OCC ({each_occ}) > GL_AGGREGATE ({gen_agg}) "
+                f"no certificate {certificate_id}. Marcando qualidade baixa."
+            )
+            quality = 0.5
+
+    # 5) Monta estrutura de saída
     policies: List[ExtractedPolicy] = []
     coverages: List[ExtractedCoverage] = []
 
@@ -227,11 +285,11 @@ def parse_acord25_gl_limits(
             expiration_date=exp_date,
             cancellation_notice_days=None,
             source_method="PARSER",
-            confidence_score=1.0,
+            confidence_score=quality,
         )
     )
 
-    def add_cov(code: str, amount: Optional[float]):
+    def add_cov(code: str, amount: Optional[float]) -> None:
         if amount is None:
             return
         coverages.append(
@@ -243,7 +301,7 @@ def parse_acord25_gl_limits(
                 deductible_amount=None,
                 deductible_currency="USD",
                 source_method="PARSER",
-                confidence_score=1.0,
+                confidence_score=quality,
             )
         )
 
@@ -254,13 +312,11 @@ def parse_acord25_gl_limits(
     add_cov("GL_DAMAGE_PREM", damage_prem)
     add_cov("GL_MED_EXP", med_exp)
 
-    quality = 1.0 if each_occ is not None and gen_agg is not None else 0.7
-
     return ExtractedCOI(
         certificate_id=certificate_id,
         policies=policies,
         coverages=coverages,
-        clauses=[],
+        clauses=[],  # ainda não tratamos clauses no GL
         source="PARSER",
         quality_score=quality,
     )

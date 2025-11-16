@@ -1,71 +1,134 @@
-﻿from __future__ import annotations
+﻿"""
+Módulo de OCR do ACE.
 
+Responsável por combinar:
+- texto da camada de texto do PDF (pdfplumber, via layout.extract_text_from_pdf)
+- OCR com Tesseract (via pdf2image + pytesseract)
+
+Externa:
+- extract_text_with_ocr(path, mode, min_chars_for_text_layer, max_pages)
+
+Configuração:
+- ACE_TESSERACT_CMD: caminho do executável do Tesseract
+- ACE_POPPLER_PATH: pasta "bin" do Poppler (Windows)
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
+import pdf2image
+import pytesseract
 
 from .layout import PageText, extract_text_from_pdf
 
 
-class OcrMode(str, Enum):
-    REQUIRED = "REQUIRED"   # sempre roda OCR
-    FALLBACK = "FALLBACK"   # só roda OCR se pdfplumber não achar texto suficiente
+class OcrMode(Enum):
+    """Modo de uso do OCR."""
+
+    REQUIRED = "REQUIRED"  # sempre usa OCR
+    FALLBACK = "FALLBACK"  # tenta texto do PDF, cai pro OCR se precisar
 
 
 @dataclass
 class OcrExtractionResult:
+    """Resultado da extração com ou sem OCR."""
+
     pages: List[PageText]
-    provider: str            # "TESSERACT" ou "PDFPLUMBER"
+    provider: str          # "PDFPLUMBER" ou "TESSERACT"
     used_ocr: bool
     mode: OcrMode
 
 
-# 👇 Caminho da pasta onde fica o `pdftoppm.exe` (Poppler).
-# Use SEMPRE a pasta que termina em `\bin`, NÃO o executável.
-POPPLER_PATH = r"C:\Users\Natan\Downloads\Release-25.11.0-0\poppler-25.11.0\Library\bin"
+# ========= Configuração (sem hardcoded de usuário) =========
 
-# 👇 Caminho do `tesseract.exe`. Ajuste se estiver em outro lugar.
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Caminho padrão do executável do Tesseract (Windows). Pode ser sobrescrito.
+DEFAULT_TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+# Poppler não tem um path padrão confiável; forçamos configuração via env.
+DEFAULT_POPPLER_PATH: Optional[str] = None
+
+# Variáveis de ambiente
+TESSERACT_CMD = os.getenv("ACE_TESSERACT_CMD", DEFAULT_TESSERACT_CMD)
+POPPLER_PATH = os.getenv("ACE_POPPLER_PATH", DEFAULT_POPPLER_PATH)
+
+# Configura pytesseract se tivermos um comando definido
+if TESSERACT_CMD:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
 
-def _run_tesseract_ocr(pdf_path: Path) -> List[PageText]:
+def ensure_ocr_dependencies() -> None:
     """
-    Converte o PDF em imagens (usando Poppler) e roda OCR com Tesseract
-    página a página. Retorna uma lista de PageText.
+    Verifica se Tesseract e Poppler estão configurados corretamente.
+
+    Levanta RuntimeError com mensagem amigável se algo estiver faltando.
     """
-    try:
-        import pytesseract
-        from pdf2image import convert_from_path
-    except ImportError as e:
+    # --- Tesseract ---
+    if not TESSERACT_CMD:
         raise RuntimeError(
-            "Dependências de OCR não instaladas. Rode dentro do venv:\n"
-            "  pip install pytesseract pdf2image pillow"
-        ) from e
-
-    # Configurar caminho do Tesseract explicitamente
-    if TESSERACT_CMD:
-        pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
-
-    if not POPPLER_PATH:
-        raise RuntimeError(
-            "POPPLER_PATH não configurado em ace.extraction.ocr. "
-            "Ajuste a constante POPPLER_PATH para a pasta que contém pdftoppm.exe."
+            "Tesseract não configurado. Defina ACE_TESSERACT_CMD com o caminho do "
+            "executável do Tesseract (ex: C:\\Program Files\\Tesseract-OCR\\tesseract.exe)."
         )
 
-    pages: List[PageText] = []
+    exe_path = Path(TESSERACT_CMD)
+    found = False
+    if exe_path.is_file():
+        found = True
+    elif shutil.which(TESSERACT_CMD) is not None:
+        found = True
 
-    # converte cada página do PDF em imagem PIL (usa Poppler via pdf2image)
-    images = convert_from_path(
-        str(pdf_path),
+    if not found:
+        raise RuntimeError(
+            f"Tesseract não encontrado em '{TESSERACT_CMD}'. "
+            "Ajuste ACE_TESSERACT_CMD ou instale corretamente o Tesseract."
+        )
+
+    # --- Poppler ---
+    if POPPLER_PATH is None:
+        raise RuntimeError(
+            "Poppler não configurado. Defina ACE_POPPLER_PATH com a pasta 'bin' do Poppler "
+            "(ex: C:\\tools\\poppler\\Library\\bin)."
+        )
+
+    poppler_dir = Path(POPPLER_PATH)
+    if not poppler_dir.exists():
+        raise RuntimeError(
+            f"Pasta do Poppler não encontrada em '{POPPLER_PATH}'. "
+            "Verifique ACE_POPPLER_PATH."
+        )
+
+
+def _run_ocr(path: str, max_pages: Optional[int] = None) -> List[PageText]:
+    """
+    Roda OCR com Tesseract para até max_pages do PDF.
+
+    Retorna lista de PageText.
+    """
+    ensure_ocr_dependencies()
+
+    images = pdf2image.convert_from_path(
+        path,
         poppler_path=POPPLER_PATH,
+        first_page=1,
+        last_page=max_pages if max_pages is not None else None,
     )
 
-    for idx, img in enumerate(images, start=1):
+    pages: List[PageText] = []
+    for idx, img in enumerate(images):
         text = pytesseract.image_to_string(img)
         lines = text.splitlines()
-        pages.append(PageText(page_number=idx, text=text, lines=lines))
-
+        pages.append(
+            PageText(
+                page_number=idx + 1,
+                text=text,
+                lines=lines,
+            )
+        )
     return pages
 
 
@@ -73,31 +136,23 @@ def extract_text_with_ocr(
     path: str,
     mode: OcrMode = OcrMode.REQUIRED,
     min_chars_for_text_layer: int = 50,
+    max_pages: Optional[int] = None,
 ) -> OcrExtractionResult:
     """
-    Extrai texto do PDF garantindo OCR conforme o modo:
+    Extrai texto de um PDF combinando camada de texto e OCR.
 
-      - REQUIRED:
-          - ignora o que vier do pdfplumber e sempre usa OCR (Tesseract).
-      - FALLBACK:
-          - usa pdfplumber se já houver "texto suficiente" (>= min_chars_for_text_layer);
-          - se não houver, roda OCR e usa a saída do Tesseract.
+    - mode=REQUIRED: sempre roda OCR e usa o resultado do Tesseract.
+    - mode=FALLBACK: tenta usar apenas pdfplumber; se pouco texto, cai para OCR.
 
-    Retorna OcrExtractionResult com:
-      - pages    -> lista de PageText
-      - provider -> "PDFPLUMBER" ou "TESSERACT"
-      - used_ocr -> bool
-      - mode     -> modo usado (REQUIRED/FALLBACK)
+    max_pages limita o número de páginas processadas por OCR (útil para PDFs
+    grandes onde o ACORD 25 está no começo).
     """
-    pdf_path = Path(path).resolve()
+    # 1) Tenta camada de texto (pdfplumber) primeiro
+    baseline_pages = extract_text_from_pdf(path)
+    baseline_chars = sum(len(p.text or "") for p in baseline_pages)
 
-    # 1) baseline: camada de texto normal com pdfplumber
-    baseline_pages = extract_text_from_pdf(str(pdf_path))
-    total_chars = sum(len(p.text.strip()) for p in baseline_pages)
-    has_text_layer = total_chars >= min_chars_for_text_layer
-
-    # Modo FALLBACK: se o PDF já tem texto razoável, usamos pdfplumber
-    if mode == OcrMode.FALLBACK and has_text_layer:
+    # Se o modo for FALLBACK e a camada de texto já for suficiente, usamos ela.
+    if mode == OcrMode.FALLBACK and baseline_chars >= min_chars_for_text_layer:
         return OcrExtractionResult(
             pages=baseline_pages,
             provider="PDFPLUMBER",
@@ -105,8 +160,8 @@ def extract_text_with_ocr(
             mode=mode,
         )
 
-    # 2) REQUIRED ou FALLBACK sem texto -> rodar OCR com Tesseract
-    ocr_pages = _run_tesseract_ocr(pdf_path)
+    # 2) Caso contrário, rodamos OCR obrigatório
+    ocr_pages = _run_ocr(path, max_pages=max_pages)
 
     return OcrExtractionResult(
         pages=ocr_pages,

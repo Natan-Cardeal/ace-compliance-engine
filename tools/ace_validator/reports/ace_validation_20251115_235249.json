@@ -1,0 +1,77 @@
+{
+  "timestamp": "20251115_235249",
+  "project": {
+    "files": 31,
+    "lines": 2193,
+    "modules": [
+      "ace",
+      "scripts"
+    ]
+  },
+  "analysis": {
+    "summary": "O pipeline de extra\u00e7\u00e3o apresenta boa estrutura modular e funcionalidades essenciais para processamento de COIs ACORD 25, mas possui vulnerabilidades cr\u00edticas em tratamento de erros, configura\u00e7\u00e3o hardcoded e falta de valida\u00e7\u00e3o robusta que comprometem a produ\u00e7\u00e3o.",
+    "score": 65,
+    "findings": [
+      {
+        "area": "Configura\u00e7\u00e3o hardcoded",
+        "severity": "high",
+        "description": "Caminhos do Tesseract e Poppler est\u00e3o hardcoded com paths espec\u00edficos do Windows (C:\\Users\\Natan\\...). Isso quebra portabilidade e deployment em outros ambientes.",
+        "file": "ace/extraction/ocr.py"
+      },
+      {
+        "area": "Tratamento de exce\u00e7\u00f5es inconsistente",
+        "severity": "high",
+        "description": "Em runner.py, algumas exce\u00e7\u00f5es s\u00e3o capturadas mas outras podem vazar (ex: problemas de BD ap\u00f3s OCR). Falta tratamento uniforme e logging estruturado.",
+        "file": "ace/extraction/runner.py"
+      },
+      {
+        "area": "Gest\u00e3o de conex\u00f5es BD",
+        "severity": "medium",
+        "description": "M\u00faltiplas conex\u00f5es s\u00e3o abertas/fechadas no mesmo fluxo sem pooling. Pode causar problemas de performance e locks em alta concorr\u00eancia.",
+        "file": "ace/extraction/runner.py"
+      },
+      {
+        "area": "Valida\u00e7\u00e3o de dados extra\u00eddos",
+        "severity": "medium",
+        "description": "Parser aceita valores como 0.0 ou negativos sem valida\u00e7\u00e3o. N\u00e3o h\u00e1 verifica\u00e7\u00e3o de sanidade dos limites GL extra\u00eddos (ex: each_occurrence > aggregate seria inv\u00e1lido).",
+        "file": "ace/extraction/parser_acord25.py"
+      },
+      {
+        "area": "Performance OCR",
+        "severity": "medium",
+        "description": "OCR sempre processa todas as p\u00e1ginas mesmo quando limites GL podem estar apenas na primeira. N\u00e3o h\u00e1 otimiza\u00e7\u00e3o para documentos grandes.",
+        "file": "ace/extraction/ocr.py"
+      },
+      {
+        "area": "Heur\u00edsticas fr\u00e1geis",
+        "severity": "medium",
+        "description": "Extra\u00e7\u00e3o de policy_number usa heur\u00edsticas simples (token antes da data, >6 chars). Pode falhar com layouts ACORD variados ou capturar dados incorretos.",
+        "file": "ace/extraction/parser_acord25.py"
+      },
+      {
+        "area": "Depend\u00eancias externas n\u00e3o verificadas",
+        "severity": "low",
+        "description": "N\u00e3o h\u00e1 verifica\u00e7\u00e3o se Tesseract/Poppler existem nos caminhos configurados antes de tentar usar. Falha s\u00f3 \u00e9 detectada em runtime.",
+        "file": "ace/extraction/ocr.py"
+      },
+      {
+        "area": "Logging insuficiente",
+        "severity": "low",
+        "description": "Apenas prints b\u00e1sicos para debug. Falta logging estruturado com n\u00edveis adequados para produ\u00e7\u00e3o e troubleshooting.",
+        "file": "ace/extraction/runner.py"
+      }
+    ],
+    "recommendations": [
+      "Implementar configura\u00e7\u00e3o via vari\u00e1veis de ambiente ou arquivo config para caminhos do Tesseract/Poppler",
+      "Adicionar valida\u00e7\u00e3o de depend\u00eancias externas no startup da aplica\u00e7\u00e3o",
+      "Implementar try-catch mais granular com rollback de transa\u00e7\u00f5es BD em caso de falha",
+      "Adicionar valida\u00e7\u00e3o de sanidade para valores extra\u00eddos (ranges v\u00e1lidos, rela\u00e7\u00f5es entre limites)",
+      "Implementar connection pooling ou context managers para gest\u00e3o de BD",
+      "Otimizar OCR para processar apenas p\u00e1ginas relevantes (ex: primeiras 2 p\u00e1ginas para GL)",
+      "Adicionar logging estruturado com correlation IDs para rastreamento",
+      "Criar testes unit\u00e1rios para validar heur\u00edsticas de parsing com casos edge",
+      "Implementar retry logic para opera\u00e7\u00f5es de BD e OCR",
+      "Adicionar m\u00e9tricas de performance e qualidade de extra\u00e7\u00e3o"
+    ]
+  }
+}

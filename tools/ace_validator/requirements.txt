@@ -1,0 +1,13 @@
+# ACE Validator - Dependências
+
+# Core
+requests>=2.31.0
+
+# Git (geralmente já vem instalado no sistema)
+# Se necessário: GitPython>=3.1.40
+
+# Análise de código
+# ast está na stdlib do Python
+
+# Opcional para relatórios
+pyyaml>=6.0
