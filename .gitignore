@@ -1,0 +1,28 @@
+﻿# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Logs
+*.log
+
+# DB / arquivos gerados
+db/*.sqlite
+db/*.db
+db/*.csv
+db/success_pdfs/
+db/success_pdfs_gl_sample.zip
+db/docs/
+
+# Arquivos temporários
+*.tmp
+*.bak
+
+# IDEs / projeto
+.idea/
+.vscode/
+*.iml
+
+# Sistema
+Thumbs.db
+.DS_Store
