@@ -1,16 +1,53 @@
-﻿# Environment
-.env
-.env.local
-
-# Python
+﻿# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
 .venv/
+venv/
+ENV/
 
-# Reports
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backups
+*.backup_*
+*.bak
+
+# Cache e dados temporários
+cache/
+logs/
+*.log
+
+# Database (pode conter dados sensíveis)
+db/
+*.db
+*.sqlite
+*.sqlite3
+
+# Test data (PDFs são grandes)
+test_data/sample_pdfs/
+test_data/*/originals/
+test_data/*/outputs/
+
+# Relatórios temporários
 reports/*.json
-reports/*.md
+reports/*.html
 
-# Cache
-.cache/
-*.pkl
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+.env
+*.key
+*_credentials.json

@@ -1,6 +1,6 @@
 """
 ACE Validator - CLI Principal
-Sistema de validação integrado com Git + Claude API + Reporter
+Sistema de validação integrado com Git + Claude API
 """
 
 import argparse
@@ -9,7 +9,6 @@ from pathlib import Path
 from core.git_handler import GitHandler
 from core.code_analyzer import CodeAnalyzer
 from core.claude_client import ClaudeClient, AnalysisRequest
-from core.reporter import Reporter
 
 
 class ACEValidator:
@@ -19,14 +18,10 @@ class ACEValidator:
         self.git = GitHandler(repo_path)
         self.analyzer = CodeAnalyzer(repo_path)
         self.claude = ClaudeClient(api_key)
-        self.reporter = Reporter("reports")
         self.repo_path = Path(repo_path)
     
-    def validate_full_project(self, output_formats: list = None):
+    def validate_full_project(self):
         """Validação completa do projeto"""
-        if output_formats is None:
-            output_formats = ["json", "markdown", "console"]
-        
         print("\n🔍 VALIDAÇÃO COMPLETA DO ACE\n")
         
         # 1. Resumo do repositório
@@ -38,7 +33,7 @@ class ACEValidator:
         # 2. Análise do código
         print("\n📁 Análise do Projeto:")
         project_context = self.analyzer.analyze_project(
-            include_patterns=["ace/**/*.py", "scripts/**/*.py", "tools/**/*.py"]
+            include_patterns=["ace/**/*.py", "scripts/**/*.py"]
         )
         print(f"  • Total de arquivos: {project_context.total_files}")
         print(f"  • Total de linhas: {project_context.total_lines:,}")
@@ -101,18 +96,8 @@ class ACEValidator:
             for i, rec in enumerate(analysis.recommendations[:5], 1):
                 print(f"  {i}. {rec}")
         
-        # Gera relatórios
-        print("\n📝 Gerando relatórios...")
-        generated_files = self.reporter.generate_report(
-            analysis,
-            project_context,
-            repo_summary,
-            formats=output_formats
-        )
-        
-        print("\n💾 Relatórios gerados:")
-        for format_name, file_path in generated_files.items():
-            print(f"  • {format_name.upper()}: {file_path}")
+        # Salva relatório
+        self._save_report(analysis, project_context)
     
     def validate_parser(self, parser_name: str = "parser_acord25"):
         """Valida parser específico"""
@@ -157,10 +142,6 @@ class ACEValidator:
         print(f"\n🔍 Revisando últimos {n_commits} commits\n")
         
         commits = self.git.get_recent_commits(n=n_commits)
-        
-        if not commits:
-            print("⚠️  Nenhum commit encontrado (repositório pode não estar inicializado)")
-            return
         
         for commit in commits:
             print(f"📝 {commit.hash} - {commit.author}")
@@ -228,34 +209,45 @@ Estatísticas do projeto:
 """
         
         return context
+    
+    def _save_report(self, analysis, project_context):
+        """Salva relatório em arquivo"""
+        report_dir = Path("reports")
+        report_dir.mkdir(exist_ok=True)
+        
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_file = report_dir / f"ace_validation_{timestamp}.json"
+        
+        report = {
+            "timestamp": timestamp,
+            "project": {
+                "files": project_context.total_files,
+                "lines": project_context.total_lines,
+                "modules": project_context.modules
+            },
+            "analysis": {
+                "summary": analysis.summary,
+                "score": analysis.score,
+                "findings": analysis.findings,
+                "recommendations": analysis.recommendations
+            }
+        }
+        
+        report_file.write_text(json.dumps(report, indent=2))
+        print(f"\n💾 Relatório salvo: {report_file}")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="ACE Validator - Validação com Git + Claude + Reporter",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Exemplos de uso:
-  python main.py full                          # Validação completa
-  python main.py full --formats json markdown  # Apenas JSON e Markdown
-  python main.py parser parser_acord25         # Valida parser específico
-  python main.py commits -n 10                 # Revisa 10 commits
-  python main.py improve "ace/extraction/*.py" # Sugere melhorias
-        """
-    )
-    
-    parser.add_argument("--repo", default=".",
-                       help="Caminho do repositório ACE (padrão: diretório atual)")
+    parser = argparse.ArgumentParser(description="ACE Validator - Validação com Git + Claude")
+    parser.add_argument("--repo", default="C:/Users/Natan/PyCharmMiscProject/ACE",
+                       help="Caminho do repositório ACE")
     parser.add_argument("--api-key", help="Anthropic API Key (ou use ANTHROPIC_API_KEY env)")
     
     subparsers = parser.add_subparsers(dest="command", help="Comando a executar")
     
     # full: validação completa
-    full_cmd = subparsers.add_parser("full", help="Validação completa do projeto")
-    full_cmd.add_argument("--formats", nargs="+", 
-                         choices=["json", "markdown", "html", "console"],
-                         default=["json", "markdown", "console"],
-                         help="Formatos de relatório")
+    subparsers.add_parser("full", help="Validação completa do projeto")
     
     # parser: valida parser específico
     parser_cmd = subparsers.add_parser("parser", help="Valida parser específico")
@@ -277,32 +269,17 @@ Exemplos de uso:
         return
     
     # Inicializa validador
-    try:
-        validator = ACEValidator(args.repo, args.api_key)
-    except ValueError as e:
-        print(f"\n❌ Erro: {e}")
-        print("\nConfigure sua API key:")
-        print("  export ANTHROPIC_API_KEY='sk-ant-...'")
-        print("  ou use: python main.py --api-key 'sk-ant-...' <comando>")
-        return
-    except Exception as e:
-        print(f"\n❌ Erro ao inicializar: {e}")
-        return
+    validator = ACEValidator(args.repo, args.api_key)
     
     # Executa comando
-    try:
-        if args.command == "full":
-            validator.validate_full_project(output_formats=args.formats)
-        elif args.command == "parser":
-            validator.validate_parser(args.name)
-        elif args.command == "commits":
-            validator.review_recent_changes(args.n)
-        elif args.command == "improve":
-            validator.suggest_improvements(args.pattern)
-    except Exception as e:
-        print(f"\n❌ Erro durante execução: {e}")
-        import traceback
-        traceback.print_exc()
+    if args.command == "full":
+        validator.validate_full_project()
+    elif args.command == "parser":
+        validator.validate_parser(args.name)
+    elif args.command == "commits":
+        validator.review_recent_changes(args.n)
+    elif args.command == "improve":
+        validator.suggest_improvements(args.pattern)
 
 
 if __name__ == "__main__":

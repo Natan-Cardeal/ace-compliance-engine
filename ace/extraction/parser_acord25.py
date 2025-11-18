@@ -10,6 +10,8 @@ from ace.extraction.layout import PageText
 from ace.extraction.parser_config import GL_LABELS
 from ace.extraction.models import ExtractedCOI, ExtractedPolicy, ExtractedCoverage
 from ace.utils.logger import get_logger
+from ace.extraction.classifier import classify_document, DocType
+
 from ace.utils.exceptions import ParsingException
 
 logger = get_logger('ace.extraction.parser_acord25')
@@ -321,4 +323,6 @@ def parse_acord25_gl_limits(certificate_id: int, pages: List[PageText]) -> Optio
     except Exception as e:
         logger.critical(f"Erro crítico: {e}", exc_info=True)
         return None
+
+
 

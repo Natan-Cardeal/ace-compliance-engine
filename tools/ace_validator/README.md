@@ -1,248 +1,357 @@
-# ACE Validator
+# 🔍 ACE Validator - Guia Completo
 
-Sistema de validação integrado com **Git + Claude API** para o ACORD Compliance Engine.
+Sistema de validação automática para o projeto ACE (ACORD Compliance Engine) integrado com Git e Claude API.
 
-## 🎯 Funcionalidades
+## 📋 Funcionalidades
 
-- ✅ Validação completa do projeto ACE
-- 📊 Análise de parsers (ACORD 25, GL limits, etc)
-- 🔍 Revisão de commits recentes
-- 💡 Sugestões de melhorias via Claude
-- 📋 Relatórios automatizados
+- ✅ **Validação completa** do projeto com análise via Claude
+- 🔍 **Validação específica** de parsers (ex: parser_acord25)
+- 📊 **Relatórios** em múltiplos formatos (JSON, Markdown, HTML)
+- 📝 **Revisão de commits** recentes
+- 💡 **Sugestões de melhorias** para arquivos específicos
+- 🎨 **Output colorido** no console
+
+---
 
 ## 🚀 Instalação
 
-### 1. Clone/copie o ace_validator
+### 1. Dependências
 
 ```bash
-cd C:\Users\Natan\PyCharmMiscProject
-# ace_validator já está aqui
+pip install --break-system-packages requests
 ```
 
-### 2. Instale dependências
+### 2. Configurar API Key
 
 ```bash
-cd ace_validator
-pip install -r requirements.txt --break-system-packages
+# Criar .env na raiz do projeto
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+
+# Ou exportar diretamente
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-### 3. Configure API Key
+### 3. Estrutura de pastas
 
-```bash
-# Copie o .env.example
-cp .env.example .env
-
-# Edite .env e adicione sua Anthropic API Key
+```
+ACE/
+├── ace/
+│   ├── extraction/
+│   │   ├── parser_acord25.py
+│   │   ├── runner.py
+│   │   └── ocr.py
+│   └── data_model/
+├── scripts/
+├── tools/
+│   └── ace_validator/
+│       ├── core/
+│       │   ├── claude_client.py
+│       │   ├── code_analyzer.py
+│       │   ├── git_handler.py
+│       │   └── reporter.py
+│       ├── main.py
+│       └── README.md
+└── reports/  (criado automaticamente)
 ```
 
-Ou exporte diretamente:
-
-```powershell
-# PowerShell
-$env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
-```
+---
 
 ## 📖 Uso
 
-### Validação Completa
+### Comando 1: Validação Completa
 
-Analisa todo o projeto ACE:
+Analisa TODO o projeto e gera relatórios:
 
 ```bash
+cd tools/ace_validator
 python main.py full
 ```
 
-Saída exemplo:
-```
-🔍 VALIDAÇÃO COMPLETA DO ACE
+**Opções:**
+```bash
+# Escolher formatos de relatório
+python main.py full --formats json markdown html
 
-📊 Resumo do Repositório:
-  • repo_path: C:\Users\Natan\PyCharmMiscProject\ACE
-  • current_branch: main
-  • last_commit: abc123de
+# Apenas console (sem arquivos)
+python main.py full --formats console
 
-📁 Análise do Projeto:
-  • Total de arquivos: 45
-  • Total de linhas: 3,240
-  • Módulos: ace, scripts
-
-🤖 Validação com Claude API:
-  • Enviando para análise...
-
-📋 Resultado da Análise:
-Score geral: 87/100
-
-🔴 Tratamento de erros
-   Parser ACORD 25 não valida campos nulos
-   Arquivo: ace/extraction/parser_acord25.py
-
-💾 Relatório salvo: reports/ace_validation_20241115_143022.json
+# Especificar repositório
+python main.py --repo /caminho/para/ACE full
 ```
 
-### Validar Parser Específico
+**Output:**
+- 📊 Estatísticas do projeto
+- 🔀 Informações do Git
+- 🤖 Análise via Claude
+- 💾 Relatórios salvos em `reports/`
+
+---
+
+### Comando 2: Validar Parser Específico
+
+Valida e testa um parser:
 
 ```bash
 python main.py parser parser_acord25
 ```
 
-### Revisar Commits Recentes
+**Verifica:**
+- ✅ Código válido
+- 📊 Cobertura de testes
+- ⚠️ Problemas encontrados
+- 💡 Sugestões de melhoria
+
+---
+
+### Comando 3: Revisar Commits
+
+Revisa commits recentes:
 
 ```bash
-# Últimos 5 commits (default)
+# Últimos 5 commits (padrão)
 python main.py commits
 
 # Últimos 10 commits
 python main.py commits -n 10
 ```
 
-### Sugerir Melhorias
+**Mostra:**
+- 📝 Hash e autor
+- 📅 Data do commit
+- 📄 Arquivos Python modificados
+
+---
+
+### Comando 4: Sugerir Melhorias
+
+Analisa arquivos e sugere melhorias:
 
 ```bash
-# Para arquivos de extração
-python main.py improve "ace/extraction/*.py"
+# Todos parsers
+python main.py improve "ace/extraction/parser*.py"
 
-# Para um arquivo específico
+# Arquivo específico
 python main.py improve "ace/extraction/runner.py"
-```
 
-## 🏗️ Arquitetura
-
-```
-ace_validator/
-├── core/
-│   ├── git_handler.py       # Operações Git
-│   ├── code_analyzer.py     # Análise de código Python
-│   ├── claude_client.py     # Interface com Claude API
-│   └── reporter.py          # Geração de relatórios
-├── validators/
-│   ├── extraction_validator.py
-│   ├── database_validator.py
-│   └── pipeline_validator.py
-├── reports/                 # Relatórios gerados
-├── main.py                  # CLI principal
-└── requirements.txt
-```
-
-## 🔧 Casos de Uso
-
-### 1. Validar mudanças antes de commit
-
-```bash
-# Revisa commits não enviados
-python main.py commits -n 1
-
-# Valida arquivos modificados
+# Todos arquivos de um módulo
 python main.py improve "ace/extraction/*.py"
 ```
 
-### 2. Code review automatizado
+**Fornece:**
+- 💡 5-10 sugestões práticas por arquivo
+- 🎯 Foco em: clareza, performance, manutenibilidade, erros
 
-```bash
-# Após fazer modificações no parser GL
-python main.py parser parser_acord25
+---
 
-# Validação completa antes de release
-python main.py full
-```
+## 📊 Formatos de Relatório
 
-### 3. Onboarding de novo dev
+### JSON (`validation_YYYYMMDD_HHMMSS.json`)
 
-```bash
-# Gera relatório completo do projeto
-python main.py full
-
-# Dev lê o relatório em reports/
-```
-
-## 🎨 Personalização
-
-### Análise customizada
-
-Edite `main.py` para focar em áreas específicas:
-
-```python
-focus_areas=[
-    "Tratamento de erros",
-    "Performance com 10k+ PDFs",
-    "Qualidade do OCR",
-    "Segurança de dados"
-]
-```
-
-### Validadores específicos
-
-Crie validadores em `validators/`:
-
-```python
-# validators/ocr_validator.py
-
-class OCRValidator:
-    def validate_tesseract_config(self, config):
-        # Validação específica de OCR
-        ...
-```
-
-## 📊 Relatórios
-
-Os relatórios são salvos em `reports/ace_validation_TIMESTAMP.json`:
+Estruturado para processamento:
 
 ```json
 {
-  "timestamp": "20241115_143022",
-  "project": {
-    "files": 45,
-    "lines": 3240,
-    "modules": ["ace", "scripts"]
+  "timestamp": "2025-01-15 14:30:00",
+  "project_info": {
+    "total_files": 45,
+    "total_lines": 3250
   },
-  "analysis": {
-    "summary": "Pipeline robusto, algumas melhorias em error handling",
-    "score": 87,
-    "findings": [...],
-    "recommendations": [...]
-  }
+  "analysis_summary": {
+    "score": 85.5,
+    "findings_count": 3
+  },
+  "findings": [...],
+  "recommendations": [...]
 }
 ```
 
-## 🔐 Segurança
+### Markdown (`validation_YYYYMMDD_HHMMSS.md`)
 
-- **Nunca commite** `.env` com API keys
-- Use `.gitignore` para excluir relatórios com dados sensíveis
-- Claude API não armazena código enviado (verify em settings)
+Legível e versionável:
 
-## 🤝 Contribuindo
+```markdown
+# 📊 ACE Validation Report
 
-Para adicionar novos validadores:
+**Score:** 85.5/100
 
-1. Crie classe em `validators/`
-2. Implemente método `validate()`
-3. Adicione comando ao `main.py`
+## Findings
 
-## 📝 Notas
+### 1. Error Handling 🟡 MEDIUM
 
-- Requer Git instalado no sistema
-- Recomendado: Claude Sonnet 4 (melhor para análise técnica)
-- Custo por análise completa: ~$0.10-0.30 USD (depende do tamanho do código)
-
-## 🆘 Troubleshooting
-
-**Erro: "API key not found"**
-```bash
-# Verifique se .env existe ou export manualmente
-export ANTHROPIC_API_KEY="sk-ant-..."
+**Description:** Missing try-catch in OCR pipeline
+**File:** `ace/extraction/ocr.py`
 ```
 
-**Erro: "Repository not found"**
-```bash
-# Passe caminho explícito
-python main.py --repo "C:/caminho/correto/ACE" full
-```
+### HTML (`validation_YYYYMMDD_HHMMSS.html`)
 
-**Análise muito lenta**
-```bash
-# Reduza escopo para arquivos específicos
-python main.py improve "ace/extraction/parser*.py"
+Visual com cores e layout:
+- 📊 Score com barra de progresso
+- 🎨 Findings com cores por severidade
+- 📋 Layout profissional
+
+---
+
+## 🔧 Configuração Avançada
+
+### Arquivo de configuração (futuro)
+
+Crie `ace_validator/config.yaml`:
+
+```yaml
+# Patterns de arquivos para análise
+include_patterns:
+  - "ace/**/*.py"
+  - "scripts/**/*.py"
+  - "!**/__pycache__/**"
+
+# Limites de análise
+max_files_per_analysis: 10
+max_tokens_per_request: 4000
+
+# Outputs
+report_formats:
+  - json
+  - markdown
+  - html
+
+# Severidades
+severity_thresholds:
+  high: 80
+  medium: 50
+  low: 0
 ```
 
 ---
 
-**Desenvolvido para Jones Software - ACORD Compliance Engine**
+## 🧪 Exemplos de Output
+
+### Exemplo 1: Validação Completa
+
+```bash
+$ python main.py full
+
+🔍 VALIDAÇÃO COMPLETA DO ACE
+
+📊 Resumo do Repositório:
+  • current_branch: main
+  • last_commit: a3b5c7d2
+  • repo_path: /Users/mestre/ACE
+
+📁 Análise do Projeto:
+  • Total de arquivos: 45
+  • Total de linhas: 3,250
+  • Módulos: ace, scripts, tools
+
+🤖 Validação com Claude API:
+  • Enviando para análise...
+
+📋 Resultado da Análise:
+
+O pipeline de extração está bem estruturado com separação clara de
+responsabilidades. Parser ACORD25 mostra boa robustez na extração de GL.
+
+Score geral: 85.5/100
+
+Principais achados:
+  🟡 Error Handling
+     Missing comprehensive error handling in OCR pipeline
+     Arquivo: ace/extraction/ocr.py
+
+  🟢 Code Quality
+     Well-documented functions with clear type hints
+     Arquivo: ace/extraction/parser_acord25.py
+
+Recomendações:
+  1. Add retry logic to OCR calls
+  2. Implement structured logging
+  3. Add integration tests for GL parsing
+
+📝 Gerando relatórios...
+
+💾 Relatórios gerados:
+  • JSON: reports/validation_20250115_143045.json
+  • MARKDOWN: reports/validation_20250115_143045.md
+  • CONSOLE: (exibido acima)
+```
+
+### Exemplo 2: Validar Parser
+
+```bash
+$ python main.py parser parser_acord25
+
+🔍 Validando parser_acord25.py
+
+🤖 Validando com Claude API...
+
+✅ Status: Válido
+📊 Cobertura de testes: 75/100
+
+Sugestões de melhoria:
+  • Add edge case handling for malformed dates
+  • Implement validation for extracted amounts
+  • Add logging for debugging
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Erro: "API key não encontrada"
+
+```bash
+# Verifique se está configurada
+echo $ANTHROPIC_API_KEY
+
+# Configure manualmente
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Ou passe via argumento
+python main.py --api-key "sk-ant-..." full
+```
+
+### Erro: "Nenhum commit encontrado"
+
+```bash
+# Inicialize Git se necessário
+cd /caminho/para/ACE
+git init
+git add .
+git commit -m "Initial commit"
+```
+
+### Erro: "Módulo 'requests' não encontrado"
+
+```bash
+pip install --break-system-packages requests
+```
+
+---
+
+## 📚 Referências
+
+- **Claude API:** https://docs.anthropic.com
+- **ACORD Forms:** https://www.acord.org
+- **ACE Project:** (documentação interna)
+
+---
+
+## 🎯 Próximos Passos
+
+1. ✅ **Use agora:** `python main.py full`
+2. 📊 **Revise relatórios** em `reports/`
+3. 💡 **Implemente sugestões** da análise
+4. 🔄 **Execute novamente** e compare scores
+
+---
+
+## 💬 Suporte
+
+Para questões sobre o ACE Validator:
+1. Revise este README
+2. Execute com `--help`: `python main.py --help`
+3. Contate a equipe de desenvolvimento
+
+---
+
+**Última atualização:** 2025-01-15
+**Versão:** 1.0.0

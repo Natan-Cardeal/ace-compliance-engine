@@ -1,19 +1,11 @@
 """
 Claude Client - Interface com a API do Claude (Anthropic)
-VERSÃO CORRIGIDA: Suporta carregar .env automaticamente
 """
 
 import os
 import json
 from typing import List, Dict, Optional
 from dataclasses import dataclass
-
-# Tentar carregar .env se python-dotenv estiver disponível
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # python-dotenv não instalado, usa apenas os.getenv
 
 
 @dataclass
